@@ -48,14 +48,14 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
     setError("");
     setIsSubmitting(true);
 
+    try {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, role })
     });
 
-    const result = await response.json();
-    setIsSubmitting(false);
+    const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       setError(result.message || "로그인에 실패했습니다.");
@@ -64,6 +64,11 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
 
     window.localStorage.setItem("review-system-user", JSON.stringify(result.user));
     router.push(result.user.role === "admin" ? "/admin/dashboard" : "/judge/evaluation");
+    } catch {
+      setError("Login request failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
