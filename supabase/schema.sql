@@ -16,6 +16,17 @@ create table if not exists public.app_users (
 
 alter table public.app_users enable row level security;
 
+create table if not exists public.evaluation_records (
+  judge_id text not null references public.app_users(id) on delete cascade,
+  submission_id text not null,
+  score_entries jsonb not null default '[]'::jsonb,
+  status text not null check (status in ('draft', 'submitted')),
+  updated_at timestamptz not null default now(),
+  primary key (judge_id, submission_id)
+);
+
+alter table public.evaluation_records enable row level security;
+
 insert into public.app_users (
   id, email, password_hash, name, role, organization, position, phone, division, is_active, last_seen
 ) values

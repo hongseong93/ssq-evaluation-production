@@ -75,6 +75,16 @@ export function JudgeEvaluation() {
     });
   }
 
+  async function saveCurrentEvaluation(status: "draft" | "submitted") {
+    const scoreEntries = localScores.filter((item) => item.judgeId === activeJudge.id && item.submissionId === current.id);
+    const response = await fetch("/api/evaluations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ judgeId: activeJudge.id, submissionId: current.id, scoreEntries, status })
+    });
+    if (!response.ok) throw new Error("Unable to save evaluation.");
+  }
+
   return (
     <div className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white px-5 py-4">
@@ -226,10 +236,10 @@ export function JudgeEvaluation() {
               <ArrowLeft size={16} /> 이전 작품
             </Button>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button variant="secondary" className="gap-2">
+              <Button variant="secondary" className="gap-2" onClick={() => void saveCurrentEvaluation("draft")}>
                 <Save size={16} /> 임시 저장
               </Button>
-              <Button className="gap-2">
+              <Button className="gap-2" onClick={() => void saveCurrentEvaluation("submitted")}>
                 <Send size={16} /> 최종 제출
               </Button>
             </div>
