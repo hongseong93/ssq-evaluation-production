@@ -14,6 +14,8 @@ create table if not exists public.app_users (
   updated_at timestamptz not null default now()
 );
 
+alter table public.app_users enable row level security;
+
 insert into public.app_users (
   id, email, password_hash, name, role, organization, position, phone, division, is_active, last_seen
 ) values
