@@ -37,6 +37,15 @@ create table if not exists public.competition_criteria (
 );
 alter table public.competition_criteria enable row level security;
 
+create table if not exists public.judge_assignments (
+  judge_id text not null references public.app_users(id) on delete cascade,
+  submission_id text not null references public.competition_submissions(id) on delete cascade,
+  status text not null check (status in ('not_started', 'draft', 'completed', 'submitted')) default 'not_started',
+  updated_at timestamptz not null default now(),
+  primary key (judge_id, submission_id)
+);
+alter table public.judge_assignments enable row level security;
+
 insert into storage.buckets (id, name, public) values ('submission-videos', 'submission-videos', true) on conflict (id) do nothing;
 
 insert into public.app_users (

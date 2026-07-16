@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { rankedSubmissions } from "@/lib/scoring";
+import { getAdminOverview, scoreTotal } from "@/lib/server/admin-overview";
 
 export const runtime = "nodejs";
 export async function GET() {
-  const rows = rankedSubmissions().map((item) => ({ Rank: item.rank, Receipt: item.receiptNumber, Division: item.division, Artist: item.artistName, Artwork: item.artworkTitle, Average: item.summary.average || "", Highest: item.summary.max || "", Lowest: item.summary.min || "", Deviation: item.summary.deviation || "", Reviewers: item.summary.reviewers }));
+  const data = await getAdminOverview();
+  const rows = data.submissions.map((submission) => {
+    const totals = data.evaluations.filter((item) => item.submission_id === submission.id && item.status === "submitted").map((item) => scoreTotal(item.score_entries));
+    return { Receipt: submission.receipt_number, Division: submission.division, Artist: submission.artist_name, Artwork: submission.artwork_title, Average: totals.length ? totals.reduce((sum, value) => sum + value, 0) / totals.length : "", Highest: totals.length ? Math.max(...totals) : "", Lowest: totals.length ? Math.min(...totals) : "", Reviewers: totals.length };
+  });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Scores");
   const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });

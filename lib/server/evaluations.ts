@@ -36,5 +36,7 @@ export async function saveEvaluation(judgeId: string, submissionId: string, scor
 
   const { data, error } = await getSupabaseAdmin().from("evaluation_records").upsert(record, { onConflict: "judge_id,submission_id" }).select("*").single();
   if (error) throw new Error(error.message);
+  const { error: assignmentError } = await getSupabaseAdmin().from("judge_assignments").update({ status, updated_at: new Date().toISOString() }).eq("judge_id", judgeId).eq("submission_id", submissionId);
+  if (assignmentError) throw new Error(assignmentError.message);
   return data as EvaluationRecord;
 }
