@@ -23,10 +23,13 @@ export async function POST(request: Request) {
     const artworkTitle = String(form.get("artworkTitle") || "").trim();
     const concept = String(form.get("concept") || "").trim();
     const file = form.get("video");
+    const videoPath = String(form.get("videoPath") || "");
     if (!receiptNumber || !artistName || !artworkTitle) return NextResponse.json({ message: "Receipt number, artist, and title are required." }, { status: 400 });
     const item = { id: `s-${crypto.randomUUID()}`, receiptNumber, division, artistName, artworkTitle, videoTitle: artworkTitle, concept, description: concept, videoUrl: "", thumbnailUrl: "", createdAt: new Date().toISOString().slice(0, 10) };
     if (hasSupabaseConfig()) {
-      if (file instanceof File && file.size > 0) {
+      if (videoPath) {
+        item.videoUrl = getSupabaseAdmin().storage.from("submission-videos").getPublicUrl(videoPath).data.publicUrl;
+      } else if (file instanceof File && file.size > 0) {
         const path = `${item.id}/${file.name}`;
         const upload = await getSupabaseAdmin().storage.from("submission-videos").upload(path, file, { upsert: false });
         if (upload.error) throw new Error(upload.error.message);
