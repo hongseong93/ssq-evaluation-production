@@ -1,51 +1,5 @@
-import { Plus, Search, Upload } from "lucide-react";
-import { AdminShell, Badge, Button, Card, DataTable, Field, TextArea, TextInput } from "@/components/ui";
-import { divisionLabels, submissions } from "@/lib/data";
-import { submissionSummary } from "@/lib/scoring";
-
-export default function SubmissionsPage() {
-  return (
-    <AdminShell title="출품작 관리">
-      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-              <TextInput className="pl-10" placeholder="작품명, 작가명 검색" />
-            </div>
-            <Button className="gap-2">
-              <Plus size={16} /> 출품작 등록
-            </Button>
-          </div>
-          <DataTable
-            headers={["접수번호", "부문", "작가명", "작품명", "영상", "평균 점수", "등록일"]}
-            rows={submissions.map((submission) => {
-              const summary = submissionSummary(submission);
-              return [
-                submission.receiptNumber,
-                <Badge key="division">{divisionLabels[submission.division]}</Badge>,
-                submission.artistName,
-                submission.artworkTitle,
-                <Badge key="video" tone="green">업로드 완료</Badge>,
-                summary.average || "-",
-                submission.createdAt
-              ];
-            })}
-          />
-        </Card>
-        <Card className="p-5">
-          <h2 className="text-lg font-bold text-navy-900">빠른 등록</h2>
-          <div className="mt-5 space-y-4">
-            <Field label="접수번호"><TextInput placeholder="SSQ-T-000" /></Field>
-            <Field label="지원 부문"><TextInput defaultValue="Template Creation" /></Field>
-            <Field label="작가명"><TextInput /></Field>
-            <Field label="작품명"><TextInput /></Field>
-            <Field label="기획의도"><TextArea /></Field>
-            <Button variant="secondary" className="w-full gap-2"><Upload size={16} /> 영상 파일 업로드</Button>
-          </div>
-        </Card>
-      </div>
-    </AdminShell>
-  );
-}
-
+"use client";
+import { useEffect, useState } from "react";
+import { Plus, Upload } from "lucide-react";
+import { AdminShell, Button, Card, Field, TextArea, TextInput } from "@/components/ui";
+export default function SubmissionsPage(){const [items,setItems]=useState<any[]>([]),[message,setMessage]=useState(""),[video,setVideo]=useState<File|null>(null),[form,setForm]=useState({receiptNumber:"",division:"template",artistName:"",artworkTitle:"",concept:""});const load=async()=>{const r=await fetch("/api/admin/submissions");const d=await r.json();setItems(d.submissions||[])};useEffect(()=>{void load()},[]);const save=async()=>{const data=new FormData();Object.entries(form).forEach(([k,v])=>data.append(k,v));if(video)data.append("video",video);const r=await fetch("/api/admin/submissions",{method:"POST",body:data});const d=await r.json();setMessage(r.ok?"출품작이 등록되었습니다.":d.message);if(r.ok){setForm({receiptNumber:"",division:"template",artistName:"",artworkTitle:"",concept:""});setVideo(null);void load()}};return <AdminShell title="출품작 관리"><div className="grid gap-5 xl:grid-cols-[1fr_360px]"><Card className="overflow-hidden"><div className="flex justify-between border-b p-4"><b>출품작 목록 ({items.length})</b><Button onClick={save}><Plus size={16}/> 출품작 등록</Button></div>{items.map(i=><div key={i.id} className="grid grid-cols-4 gap-3 border-b p-4 text-sm"><span>{i.receipt_number??i.receiptNumber}</span><span>{i.artist_name??i.artistName}</span><span>{i.artwork_title??i.artworkTitle}</span><span>{(i.video_url??i.videoUrl)?"영상 업로드":"영상 없음"}</span></div>)}</Card><Card className="p-5"><h2 className="text-lg font-bold">빠른 등록</h2><div className="mt-5 space-y-4"><Field label="접수번호"><TextInput value={form.receiptNumber} onChange={e=>setForm({...form,receiptNumber:e.target.value})}/></Field><Field label="지원 부문"><select className="h-10 w-full rounded-md border px-3" value={form.division} onChange={e=>setForm({...form,division:e.target.value})}><option value="template">Template Creation</option><option value="original">Original Creation</option></select></Field><Field label="작가명"><TextInput value={form.artistName} onChange={e=>setForm({...form,artistName:e.target.value})}/></Field><Field label="작품명"><TextInput value={form.artworkTitle} onChange={e=>setForm({...form,artworkTitle:e.target.value})}/></Field><Field label="기획의도"><TextArea value={form.concept} onChange={e=>setForm({...form,concept:e.target.value})}/></Field><input type="file" accept="video/*" onChange={e=>setVideo(e.target.files?.[0]??null)}/><Button variant="secondary" className="w-full" onClick={save}><Upload size={16}/> 영상 파일 업로드 및 등록</Button>{message&&<p>{message}</p>}</div></Card></div></AdminShell>}

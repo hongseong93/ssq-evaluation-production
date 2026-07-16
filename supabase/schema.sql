@@ -27,6 +27,18 @@ create table if not exists public.evaluation_records (
 
 alter table public.evaluation_records enable row level security;
 
+create table if not exists public.competition_submissions (
+  id text primary key, receipt_number text not null unique, division text not null check (division in ('template', 'original')), artist_name text not null, artwork_title text not null, video_title text not null, concept text not null default '', description text not null default '', video_url text not null default '', thumbnail_url text not null default '', created_at text not null
+);
+alter table public.competition_submissions enable row level security;
+
+create table if not exists public.competition_criteria (
+  id text primary key, division text not null check (division in ('template', 'original')), title text not null, max_score integer not null, description text not null default '', questions jsonb not null default '[]'::jsonb, display_order integer not null
+);
+alter table public.competition_criteria enable row level security;
+
+insert into storage.buckets (id, name, public) values ('submission-videos', 'submission-videos', true) on conflict (id) do nothing;
+
 insert into public.app_users (
   id, email, password_hash, name, role, organization, position, phone, division, is_active, last_seen
 ) values
