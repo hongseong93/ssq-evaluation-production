@@ -11,7 +11,7 @@ export async function GET() {
   if (!hasSupabaseConfig()) return NextResponse.json({ submissions: [...local.values()] });
   const { data, error } = await getSupabaseAdmin().from("competition_submissions").select("*").order("created_at", { ascending: false });
   if (error) return NextResponse.json({ message: error.message }, { status: 500 });
-  return NextResponse.json({ submissions: data ?? [] });
+  return NextResponse.json({ submissions: data?.length ? data : demoSubmissions });
 }
 
 export async function POST(request: Request) {

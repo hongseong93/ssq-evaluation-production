@@ -10,7 +10,7 @@ export async function GET() {
   if (!hasSupabaseConfig()) return NextResponse.json({ criteria: local });
   const { data, error } = await getSupabaseAdmin().from("competition_criteria").select("*").order("display_order");
   if (error) return NextResponse.json({ message: error.message }, { status: 500 });
-  return NextResponse.json({ criteria: data ?? [] });
+  return NextResponse.json({ criteria: data?.length ? data : demoCriteria });
 }
 
 export async function POST(request: Request) {
