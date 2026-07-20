@@ -30,6 +30,31 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+async function uploadVideo(file: File, receiptNumber: string, onProgress: (percentage: number) => void) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await upload(
+        `submissions/${receiptNumber}/${crypto.randomUUID()}-${safeName}`,
+        file,
+        {
+          access: "public",
+          handleUploadUrl: "/api/admin/submissions/blob-upload",
+          multipart: file.size >= 100 * 1024 * 1024,
+          onUploadProgress: ({ percentage }) => onProgress(Math.round(percentage)),
+        },
+      );
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) await new Promise((resolve) => window.setTimeout(resolve, 800));
+    }
+  }
+
+  throw lastError;
+}
+
 export default function SubmissionsPage() {
   const [items, setItems] = useState<Submission[]>([]);
   const [message, setMessage] = useState("");
@@ -61,17 +86,7 @@ export default function SubmissionsPage() {
     try {
       let videoUrl = "";
       if (video) {
-        const safeName = video.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const blob = await upload(
-          `submissions/${form.receiptNumber.trim()}/${crypto.randomUUID()}-${safeName}`,
-          video,
-          {
-            access: "public",
-            handleUploadUrl: "/api/admin/submissions/blob-upload",
-            multipart: video.size >= 100 * 1024 * 1024,
-            onUploadProgress: ({ percentage }) => setUploadProgress(Math.round(percentage)),
-          },
-        );
+        const blob = await uploadVideo(video, form.receiptNumber.trim(), setUploadProgress);
         videoUrl = blob.url;
       }
 
@@ -93,7 +108,8 @@ export default function SubmissionsPage() {
       setUploadProgress(0);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "등록 요청에 실패했습니다.");
+      const detail = error instanceof Error ? error.message : "알 수 없는 오류";
+      setMessage(`영상 업로드에 실패했습니다: ${detail}`);
     } finally {
       setIsSaving(false);
     }
