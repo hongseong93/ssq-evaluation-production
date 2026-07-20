@@ -108,6 +108,14 @@ export function JudgeEvaluation() {
     }, 0);
   }, [current, currentCriteria, judge, localScores]);
 
+  const isCurrentComplete = useMemo(() => {
+    if (!current || !judge || currentCriteria.length === 0) return false;
+    return currentCriteria.every((criterion) => {
+      const entry = localScores.find((item) => item.judgeId === judge.id && item.submissionId === current.id && item.criterionId === criterion.id);
+      return criterion.questions.length > 0 && criterion.questions.every((_, index) => Number(entry?.questionScores[index] || 0) > 0);
+    });
+  }, [current, currentCriteria, judge, localScores]);
+
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current);
     if (!judge || !current || loading || assignment?.status === "submitted") return;
@@ -193,6 +201,15 @@ export function JudgeEvaluation() {
   }
 
   async function moveSubmission(nextIndex: number) {
+    if (nextIndex > submissionIndex && !isCurrentComplete) {
+      const incompleteCriterion = currentCriteria.find((criterion) => {
+        const entry = localScores.find((item) => item.judgeId === judge?.id && item.submissionId === current?.id && item.criterionId === criterion.id);
+        return criterion.questions.length === 0 || criterion.questions.some((_, index) => Number(entry?.questionScores[index] || 0) === 0);
+      });
+      if (incompleteCriterion) setActiveCriterionId(incompleteCriterion.id);
+      setMessage("현재 작품의 5가지 평가항목을 모두 평가해야 다음 작품으로 이동할 수 있습니다.");
+      return;
+    }
     if (draftTimer.current) clearTimeout(draftTimer.current);
     if (judge && current && assignment?.status !== "submitted") {
       const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
@@ -269,7 +286,7 @@ export function JudgeEvaluation() {
         </div>
 
         {message && <p className="rounded-md border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">{message}</p>}
-        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={submissionIndex === 0} onClick={() => void moveSubmission(submissionIndex - 1)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> 최종 제출</Button></div><Button className="justify-self-end gap-2" disabled={submissionIndex === submissions.length - 1} onClick={() => void moveSubmission(submissionIndex + 1)}>다음 작품 <ArrowRight size={16} /></Button></div></div>
+        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={submissionIndex === 0} onClick={() => void moveSubmission(submissionIndex - 1)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> 최종 제출</Button></div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={submissionIndex === submissions.length - 1 || !isCurrentComplete} onClick={() => void moveSubmission(submissionIndex + 1)}>다음 작품 <ArrowRight size={16} /></Button></div></div>
       </main>
     </div>
   );
