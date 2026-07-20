@@ -133,7 +133,7 @@ export function JudgeEvaluation() {
         .then(async (response) => {
           const body = await response.json();
           if (!response.ok) throw new Error(body.message || "평가를 자동 저장하지 못했습니다.");
-          const savedStatus = body.evaluation?.status === "submitted" ? "submitted" : "draft";
+          const savedStatus = body.evaluation?.status ?? "draft";
           setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
         })
         .catch((error) => setMessage(error instanceof Error ? error.message : "평가를 자동 저장하지 못했습니다."));
@@ -192,7 +192,7 @@ export function JudgeEvaluation() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
-      const savedStatus = body.evaluation?.status === "submitted" ? "submitted" : status;
+      const savedStatus = body.evaluation?.status ?? status;
       setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
       setMessage(savedStatus === "submitted" ? "최종 제출되었습니다. 관리자 화면에 점수가 반영됩니다." : "임시 저장되었습니다.");
     } catch (error) {
@@ -220,11 +220,11 @@ export function JudgeEvaluation() {
           const response = await fetch("/api/evaluations", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft" }),
+            body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: isCurrentComplete ? "submitted" : "draft" }),
           });
           const body = await response.json();
           if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
-          const savedStatus = body.evaluation?.status === "submitted" ? "submitted" : "draft";
+          const savedStatus = body.evaluation?.status ?? (isCurrentComplete ? "submitted" : "draft");
           setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");

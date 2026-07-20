@@ -7,7 +7,21 @@ export type EvaluationCriterion = {
   id: string;
   max_score?: number;
   maxScore?: number;
+  questions?: string[];
 };
+
+export function evaluationIsComplete(entries: EvaluationScoreEntry[], criteria: EvaluationCriterion[]) {
+  if (!criteria.length) return false;
+
+  return criteria.every((criterion) => {
+    const entry = entries.find((item) => item.criterionId === criterion.id);
+    const questionCount = criterion.questions?.length ?? 0;
+    return questionCount > 0
+      && Boolean(entry)
+      && entry!.questionScores.length >= questionCount
+      && entry!.questionScores.slice(0, questionCount).every((score) => Number(score) > 0);
+  });
+}
 
 export function weightedCriterionScore(entry: EvaluationScoreEntry, criterion?: EvaluationCriterion) {
   if (!criterion || !entry.questionScores.length) return 0;

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download } from "lucide-react";
 import { AdminShell, Badge, Button, Card, DataTable } from "@/components/ui";
-import { evaluationTotal } from "@/lib/evaluation-score";
+import { evaluationIsComplete, evaluationTotal } from "@/lib/evaluation-score";
 
 export default function ScoresBySubmissionPage() {
   const [data, setData] = useState<any>(null);
@@ -19,12 +19,16 @@ export default function ScoresBySubmissionPage() {
     const evaluations = (data?.evaluations ?? []).filter((item: any) =>
       item.submission_id === submission.id && (item.score_entries ?? []).some((entry: any) => (entry.questionScores ?? []).some((score: number) => Number(score) > 0)),
     );
-    const totals = evaluations.map((evaluation: any) => evaluationTotal(evaluation.score_entries, data?.criteria ?? []));
+    const submissionCriteria = (data?.criteria ?? []).filter((criterion: any) => criterion.division === submission.division);
+    const completedEvaluations = evaluations.filter((evaluation: any) => evaluationIsComplete(evaluation.score_entries ?? [], submissionCriteria));
+    const totals = completedEvaluations.map((evaluation: any) => evaluationTotal(evaluation.score_entries, submissionCriteria));
     const relatedAssignments = (data?.assignments ?? []).filter((assignment: any) => assignment.submission_id === submission.id);
     const submittedCount = relatedAssignments.filter((assignment: any) => assignment.status === "submitted").length;
+    const completedJudgeIds = new Set(completedEvaluations.map((evaluation: any) => evaluation.judge_id));
+    const completedCount = relatedAssignments.filter((assignment: any) => completedJudgeIds.has(assignment.judge_id) || ["completed", "submitted"].includes(assignment.status)).length;
     const assignedCount = relatedAssignments.length;
     const average = totals.length ? Math.round((totals.reduce((sum: number, value: number) => sum + value, 0) / totals.length) * 10) / 10 : null;
-    return { submission, totals, average, submittedCount, assignedCount };
+    return { submission, totals, average, submittedCount, completedCount, assignedCount };
   }).sort((a: any, b: any) => (b.average ?? -1) - (a.average ?? -1)), [data]);
 
   return (
@@ -43,8 +47,14 @@ export default function ScoresBySubmissionPage() {
             item.totals.length ? Math.max(...item.totals) : "-",
             item.totals.length ? Math.min(...item.totals) : "-",
             item.assignedCount,
-            <Badge key="status" tone={item.assignedCount > 0 && item.submittedCount === item.assignedCount ? "green" : item.totals.length ? "gold" : "gray"}>
-              {item.assignedCount > 0 && item.submittedCount === item.assignedCount ? "최종 제출" : item.totals.length ? `${item.submittedCount}/${item.assignedCount} 제출 완료` : "미평가"}
+            <Badge key="status" tone={item.assignedCount > 0 && item.completedCount === item.assignedCount ? "green" : item.completedCount > 0 ? "gold" : "gray"}>
+              {item.assignedCount > 0 && item.submittedCount === item.assignedCount
+                ? "최종 제출"
+                : item.assignedCount > 0 && item.completedCount === item.assignedCount
+                  ? "평가 완료"
+                  : item.completedCount > 0
+                    ? `${item.completedCount}/${item.assignedCount} 평가 완료`
+                    : "미평가"}
             </Badge>,
           ])}
         />

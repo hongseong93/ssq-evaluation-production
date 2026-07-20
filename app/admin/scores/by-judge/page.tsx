@@ -39,7 +39,7 @@ export default function ScoresByJudgePage() {
       submission?.artwork_title ?? "-",
       details || "-",
       entries.length ? total : "-",
-      <Badge key="status" tone={assignment.status === "submitted" ? "green" : assignment.status === "draft" ? "gold" : "gray"}>{assignment.status === "submitted" ? "최종 제출" : assignment.status === "draft" ? "임시 저장" : "미평가"}</Badge>,
+      <Badge key="status" tone={["completed", "submitted"].includes(assignment.status) ? "green" : assignment.status === "draft" ? "gold" : "gray"}>{assignment.status === "submitted" ? "최종 제출" : assignment.status === "completed" ? "평가 완료" : assignment.status === "draft" ? "임시 저장" : "미평가"}</Badge>,
     ];
   });
 
