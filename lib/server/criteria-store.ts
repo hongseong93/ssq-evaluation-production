@@ -33,6 +33,11 @@ function demoRows() {
   return local.map((item) => ({ ...item, questions: [...item.questions] }));
 }
 
+function sortCriteria(items: CriterionRow[]) {
+  const divisionOrder = { template: 0, original: 1 };
+  return [...items].sort((a, b) => divisionOrder[a.division] - divisionOrder[b.division] || a.display_order - b.display_order);
+}
+
 async function seedCriteriaIfEmpty() {
   const db = getSupabaseAdmin();
   const { data, error } = await db.from("competition_criteria").select("*").order("display_order");
@@ -49,8 +54,8 @@ async function seedCriteriaIfEmpty() {
 }
 
 export async function listCriteria() {
-  if (!hasSupabaseConfig()) return demoRows();
-  return seedCriteriaIfEmpty();
+  if (!hasSupabaseConfig()) return sortCriteria(demoRows());
+  return sortCriteria(await seedCriteriaIfEmpty());
 }
 
 export async function createCriterion(payload: CriterionPayload) {
@@ -62,7 +67,7 @@ export async function createCriterion(payload: CriterionPayload) {
     max_score: payload.maxScore,
     description: payload.description,
     questions: payload.questions,
-    display_order: existing.filter((item) => item.division === payload.division).length + 1,
+    display_order: Math.max(0, ...existing.filter((item) => item.division === payload.division).map((item) => item.display_order)) + 1,
   };
 
   if (!hasSupabaseConfig()) {
