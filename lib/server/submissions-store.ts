@@ -93,7 +93,9 @@ export function parseSubmissionPayload(form: FormData): SubmissionPayload {
 }
 
 export async function listSubmissions() {
-  if (!hasSupabaseConfig()) return [...local.values()];
+  if (!hasSupabaseConfig()) {
+    return [...local.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  }
   const { data, error } = await getSupabaseAdmin().from("competition_submissions").select("*").order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as SubmissionRow[];
@@ -114,7 +116,7 @@ export async function createSubmission(payload: SubmissionPayload) {
     description: payload.concept,
     video_url: videoUrl,
     thumbnail_url: "",
-    created_at: new Date().toISOString().slice(0, 10),
+    created_at: new Date().toISOString(),
   };
 
   if (!hasSupabaseConfig()) {

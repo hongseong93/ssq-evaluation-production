@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { Pencil, Plus, Save, Trash2, Upload, X } from "lucide-react";
 import { AdminShell, Button, Card, Field, TextArea, TextInput } from "@/components/ui";
@@ -13,7 +13,10 @@ type Submission = {
   artwork_title: string;
   concept: string;
   video_url: string;
+  created_at: string;
 };
+
+type DivisionFilter = "all" | Submission["division"];
 
 type SubmissionForm = {
   receiptNumber: string;
@@ -58,6 +61,7 @@ export default function SubmissionsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [divisionFilter, setDivisionFilter] = useState<DivisionFilter>("all");
 
   const load = async () => {
     const response = await fetch("/api/admin/submissions", { cache: "no-store" });
@@ -134,19 +138,42 @@ export default function SubmissionsPage() {
   };
 
   const editingItem = items.find((item) => item.id === editingId);
+  const visibleItems = useMemo(() => {
+    const filtered = divisionFilter === "all" ? items : items.filter((item) => item.division === divisionFilter);
+    return [...filtered].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+  }, [divisionFilter, items]);
+  const filters: { value: DivisionFilter; label: string }[] = [
+    { value: "all", label: "전체" },
+    { value: "template", label: "Template Creation" },
+    { value: "original", label: "Original Creation" },
+  ];
 
   return (
     <AdminShell title="출품작 관리">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4">
             <b>출품작 목록 ({items.length})</b>
             <Button className="gap-2" onClick={resetForm}><Plus size={16} /> 출품작 등록</Button>
+          </div>
+          <div className="flex flex-wrap gap-2 border-b border-slate-200 px-4 py-3" role="tablist" aria-label="출품 부문 필터">
+            {filters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                role="tab"
+                aria-selected={divisionFilter === filter.value}
+                className={`h-9 rounded-md px-4 text-sm font-semibold transition-colors ${divisionFilter === filter.value ? "bg-navy-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                onClick={() => setDivisionFilter(filter.value)}
+              >
+                {filter.label} ({filter.value === "all" ? items.length : items.filter((item) => item.division === filter.value).length})
+              </button>
+            ))}
           </div>
           <div className="grid grid-cols-[minmax(130px,1fr)_minmax(120px,1fr)_minmax(160px,1.2fr)_100px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500">
             <span>접수번호</span><span>작가명</span><span>작품명</span><span>영상</span><span className="text-center">관리</span>
           </div>
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <div key={item.id} className={`grid grid-cols-[minmax(130px,1fr)_minmax(120px,1fr)_minmax(160px,1.2fr)_100px_96px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-0 ${editingId === item.id ? "bg-navy-50" : ""}`}>
               <span>{item.receipt_number}</span><span>{item.artist_name}</span><span className="font-medium text-navy-900">{item.artwork_title}</span><span>{item.video_url ? "업로드 완료" : "영상 없음"}</span>
               <div className="flex justify-center gap-1">
@@ -155,6 +182,7 @@ export default function SubmissionsPage() {
               </div>
             </div>
           ))}
+          {visibleItems.length === 0 && <p className="px-4 py-12 text-center text-sm text-slate-500">해당 부문에 등록된 출품작이 없습니다.</p>}
         </Card>
 
         <Card className="p-5">
