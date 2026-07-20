@@ -33,6 +33,19 @@ export async function POST(request: Request) {
       }
       const { data, error } = await getSupabaseAdmin().from("competition_submissions").insert({ id: item.id, receipt_number: item.receiptNumber, division: item.division, artist_name: item.artistName, artwork_title: item.artworkTitle, video_title: item.videoTitle, concept: item.concept, description: item.description, video_url: item.videoUrl, thumbnail_url: item.thumbnailUrl, created_at: item.createdAt }).select("*").single();
       if (error) throw new Error(error.message);
+      const { data: eligibleJudges, error: judgeError } = await getSupabaseAdmin()
+        .from("app_users")
+        .select("id,division")
+        .eq("role", "judge")
+        .eq("is_active", true);
+      if (judgeError) throw new Error(judgeError.message);
+      const assignmentRows = (eligibleJudges ?? [])
+        .filter((judge) => judge.division === "all" || judge.division === item.division)
+        .map((judge) => ({ judge_id: judge.id, submission_id: item.id, status: "not_started", updated_at: new Date().toISOString() }));
+      if (assignmentRows.length) {
+        const { error: assignmentError } = await getSupabaseAdmin().from("judge_assignments").upsert(assignmentRows, { onConflict: "judge_id,submission_id", ignoreDuplicates: true });
+        if (assignmentError) throw new Error(assignmentError.message);
+      }
       return NextResponse.json({ submission: data }, { status: 201 });
     }
     local.set(item.id, item as typeof demoSubmissions[number]);
