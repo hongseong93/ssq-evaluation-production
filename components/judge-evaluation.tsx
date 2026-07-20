@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, LogOut, Save, Send } from "lucide-react";
 import type { AssignmentStatus, Criterion, Judge, ScoreEntry, Submission } from "@/lib/types";
@@ -65,6 +65,7 @@ export function JudgeEvaluation() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("review-system-user");
@@ -107,6 +108,33 @@ export function JudgeEvaluation() {
     }, 0);
   }, [current, currentCriteria, judge, localScores]);
 
+  useEffect(() => {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (!judge || !current || loading || assignment?.status === "submitted") return;
+
+    const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
+    const hasScore = scoreEntries.some((entry) => entry.questionScores.some((score) => Number(score) > 0));
+    if (!hasScore) return;
+
+    draftTimer.current = setTimeout(() => {
+      fetch("/api/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft" }),
+      })
+        .then(async (response) => {
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.message || "평가를 자동 저장하지 못했습니다.");
+          setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: "draft" } : item));
+        })
+        .catch((error) => setMessage(error instanceof Error ? error.message : "평가를 자동 저장하지 못했습니다."));
+    }, 700);
+
+    return () => {
+      if (draftTimer.current) clearTimeout(draftTimer.current);
+    };
+  }, [assignment?.status, current, judge, loading, localScores]);
+
   function updateQuestionScore(questionIndex: number, value: number) {
     if (!judge || !current || !activeCriterion) return;
     const nextCriterionId = currentCriteria[activeCriterionIndex + 1]?.id;
@@ -134,6 +162,7 @@ export function JudgeEvaluation() {
 
   async function saveCurrentEvaluation(status: "draft" | "submitted") {
     if (!judge || !current) return;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
     const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
     const complete = currentCriteria.every((criterion) => {
       const entry = scoreEntries.find((item) => item.criterionId === criterion.id);
@@ -163,7 +192,26 @@ export function JudgeEvaluation() {
     }
   }
 
-  function moveSubmission(nextIndex: number) {
+  async function moveSubmission(nextIndex: number) {
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (judge && current && assignment?.status !== "submitted") {
+      const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
+      if (scoreEntries.some((entry) => entry.questionScores.some((score) => Number(score) > 0))) {
+        try {
+          const response = await fetch("/api/evaluations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft" }),
+          });
+          const body = await response.json();
+          if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
+          setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: "draft" } : item));
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");
+          return;
+        }
+      }
+    }
     setSubmissionIndex(Math.max(0, Math.min(submissions.length - 1, nextIndex)));
     setActiveCriterionId(null);
     setMessage("");
@@ -221,7 +269,7 @@ export function JudgeEvaluation() {
         </div>
 
         {message && <p className="rounded-md border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">{message}</p>}
-        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={submissionIndex === 0} onClick={() => moveSubmission(submissionIndex - 1)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> 최종 제출</Button></div><Button className="justify-self-end gap-2" disabled={submissionIndex === submissions.length - 1} onClick={() => moveSubmission(submissionIndex + 1)}>다음 작품 <ArrowRight size={16} /></Button></div></div>
+        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={submissionIndex === 0} onClick={() => void moveSubmission(submissionIndex - 1)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> 최종 제출</Button></div><Button className="justify-self-end gap-2" disabled={submissionIndex === submissions.length - 1} onClick={() => void moveSubmission(submissionIndex + 1)}>다음 작품 <ArrowRight size={16} /></Button></div></div>
       </main>
     </div>
   );

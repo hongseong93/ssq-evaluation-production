@@ -9,7 +9,10 @@ export default function ScoresByJudgePage() {
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/admin/overview", { cache: "no-store" }).then((response) => response.json()).then(setData);
+    const load = () => fetch("/api/admin/overview", { cache: "no-store" }).then((response) => response.json()).then(setData);
+    void load();
+    const timer = window.setInterval(load, 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   const judges = data?.judges ?? [];
