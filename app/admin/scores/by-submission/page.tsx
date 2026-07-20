@@ -20,9 +20,11 @@ export default function ScoresBySubmissionPage() {
       item.submission_id === submission.id && (item.score_entries ?? []).some((entry: any) => (entry.questionScores ?? []).some((score: number) => Number(score) > 0)),
     );
     const totals = evaluations.map((evaluation: any) => evaluationTotal(evaluation.score_entries, data?.criteria ?? []));
-    const submittedCount = evaluations.filter((evaluation: any) => evaluation.status === "submitted").length;
+    const relatedAssignments = (data?.assignments ?? []).filter((assignment: any) => assignment.submission_id === submission.id);
+    const submittedCount = relatedAssignments.filter((assignment: any) => assignment.status === "submitted").length;
+    const assignedCount = relatedAssignments.length;
     const average = totals.length ? Math.round((totals.reduce((sum: number, value: number) => sum + value, 0) / totals.length) * 10) / 10 : null;
-    return { submission, totals, average, submittedCount };
+    return { submission, totals, average, submittedCount, assignedCount };
   }).sort((a: any, b: any) => (b.average ?? -1) - (a.average ?? -1)), [data]);
 
   return (
@@ -40,9 +42,9 @@ export default function ScoresBySubmissionPage() {
             item.average ?? "-",
             item.totals.length ? Math.max(...item.totals) : "-",
             item.totals.length ? Math.min(...item.totals) : "-",
-            item.totals.length,
-            <Badge key="status" tone={item.submittedCount === item.totals.length && item.totals.length ? "green" : item.totals.length ? "gold" : "gray"}>
-              {item.submittedCount === item.totals.length && item.totals.length ? "최종 제출" : item.totals.length ? "진행 중" : "미평가"}
+            item.assignedCount,
+            <Badge key="status" tone={item.assignedCount > 0 && item.submittedCount === item.assignedCount ? "green" : item.totals.length ? "gold" : "gray"}>
+              {item.assignedCount > 0 && item.submittedCount === item.assignedCount ? "최종 제출" : item.totals.length ? `${item.submittedCount}/${item.assignedCount} 제출 완료` : "미평가"}
             </Badge>,
           ])}
         />
