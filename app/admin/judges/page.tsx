@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Edit3, KeyRound, Plus, RotateCcw, Save, X } from "lucide-react";
+import { Edit3, KeyRound, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { AdminShell, Badge, Button, Card, DataTable, Field, TextInput } from "@/components/ui";
 import { divisionLabels } from "@/lib/data";
 import { judgeProgress } from "@/lib/scoring";
@@ -36,6 +36,7 @@ export default function JudgesPage() {
   const [form, setForm] = useState<JudgeForm>(emptyForm);
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const selectedJudge = useMemo(() => judges.find((judge) => judge.id === editingId), [editingId, judges]);
 
@@ -104,6 +105,26 @@ export default function JudgesPage() {
     updateForm("password", "Temp@2026!");
   }
 
+  async function removeJudge(judge: Judge) {
+    const confirmed = window.confirm(`'${judge.name}' 심사위원을 삭제하시겠습니까?\n연결된 작품 배정과 평가 기록도 함께 삭제됩니다.`);
+    if (!confirmed) return;
+
+    setDeletingId(judge.id);
+    setMessage("");
+    try {
+      const response = await fetch(`/api/admin/judges/${judge.id}`, { method: "DELETE" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "심사위원 삭제에 실패했습니다.");
+      if (editingId === judge.id) resetForm();
+      await loadJudges();
+      setMessage("심사위원 계정과 연결된 배정·평가 기록이 삭제되었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "심사위원 삭제에 실패했습니다.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <AdminShell title="심사위원 관리">
       <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
@@ -124,9 +145,10 @@ export default function JudgesPage() {
                   `${progress.completed + progress.submitted} / ${progress.assigned}`,
                   <Badge key="active" tone={judge.isActive ? "green" : "gray"}>{judge.isActive ? "활성" : "비활성"}</Badge>,
                   judge.lastSeen,
-                  <Button key="edit" variant="secondary" className="h-9 gap-2 px-3" onClick={() => startEdit(judge)}>
-                    <Edit3 size={15} /> 수정
-                  </Button>
+                  <div key="manage" className="flex items-center gap-1">
+                    <button type="button" title="심사위원 수정" aria-label={`${judge.name} 수정`} className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-navy-900" onClick={() => startEdit(judge)}><Edit3 size={16} /></button>
+                    <button type="button" title="심사위원 삭제" aria-label={`${judge.name} 삭제`} className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === judge.id} onClick={() => void removeJudge(judge)}><Trash2 size={16} /></button>
+                  </div>
                 ];
               })}
             />

@@ -243,3 +243,28 @@ export async function updateJudge(id: string, input: JudgeInput) {
   await writeLocalDb(db);
   return publicUser(user);
 }
+
+export async function deleteJudge(id: string) {
+  if (hasSupabaseConfig()) {
+    const db = requireDatabase();
+    const { data: existing, error: findError } = await db.from("app_users").select("id").eq("id", id).eq("role", "judge").maybeSingle();
+    if (findError) throw new Error(findError.message);
+    if (!existing) return false;
+
+    const { error: evaluationError } = await db.from("evaluation_records").delete().eq("judge_id", id);
+    if (evaluationError) throw new Error(evaluationError.message);
+    const { error: assignmentError } = await db.from("judge_assignments").delete().eq("judge_id", id);
+    if (assignmentError) throw new Error(assignmentError.message);
+    const { error } = await db.from("app_users").delete().eq("id", id).eq("role", "judge");
+    if (error) throw new Error(error.message);
+    return true;
+  }
+
+  if (process.env.VERCEL) requireDatabase();
+  const db = await readLocalDb();
+  const index = db.users.findIndex((item) => item.id === id && item.role === "judge");
+  if (index < 0) return false;
+  db.users.splice(index, 1);
+  await writeLocalDb(db);
+  return true;
+}

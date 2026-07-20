@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { updateJudge } from "@/lib/server/db";
+import { deleteJudge, updateJudge } from "@/lib/server/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +18,20 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   } catch (error) {
     return NextResponse.json(
       { message: error instanceof Error ? error.message : "심사위원 수정에 실패했습니다." },
+      { status: 400 }
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await context.params;
+    const deleted = await deleteJudge(id);
+    if (!deleted) return NextResponse.json({ message: "심사위원을 찾을 수 없습니다." }, { status: 404 });
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "심사위원 삭제에 실패했습니다." },
       { status: 400 }
     );
   }
