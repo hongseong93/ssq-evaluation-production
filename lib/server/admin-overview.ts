@@ -1,5 +1,6 @@
 import { assignments as demoAssignments, criteria as demoCriteria, judges as demoJudges, submissions as demoSubmissions } from "@/lib/data";
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/server/supabase";
+import { evaluationTotal } from "@/lib/evaluation-score";
 
 type SubmissionRow = { id: string; receipt_number: string; division: "template" | "original"; artist_name: string; artwork_title: string; video_url: string; created_at: string };
 type CriterionRow = { id: string; division: "template" | "original"; title: string; max_score: number; description: string; questions: string[]; display_order: number };
@@ -38,12 +39,22 @@ export async function getAdminOverview(): Promise<AdminOverview> {
   return {
     submissions: (submissions.data ?? []) as SubmissionRow[],
     judges: (judgeUsers.data ?? []).map((row) => ({ id: row.id, name: row.name, email: row.email, organization: row.organization, position: row.position, phone: row.phone, division: row.division, isActive: row.is_active, lastSeen: row.last_seen })),
-    criteria: (criteria.data ?? []) as CriterionRow[],
+    criteria: criteria.data?.length
+      ? (criteria.data as CriterionRow[])
+      : demoCriteria.map((item) => ({
+          id: item.id,
+          division: item.division,
+          title: item.title,
+          max_score: item.maxScore,
+          description: item.description,
+          questions: item.questions,
+          display_order: item.order,
+        })),
     assignments: (assignments.data ?? []) as AssignmentRow[],
     evaluations: (evaluations.data ?? []) as EvaluationRow[]
   };
 }
 
-export function scoreTotal(entries: EvaluationRow["score_entries"]) {
-  return entries.reduce((total, entry) => total + entry.questionScores.reduce((sum, score) => sum + Number(score || 0), 0), 0);
+export function scoreTotal(entries: EvaluationRow["score_entries"], criteria: CriterionRow[]) {
+  return evaluationTotal(entries, criteria);
 }
