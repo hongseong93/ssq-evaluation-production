@@ -8,9 +8,10 @@ const MAX_VIDEO_SIZE = 5 * 1024 * 1024 * 1024;
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const token = process.env.MEDIA_READ_WRITE_TOKEN || process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) {
       return NextResponse.json(
-        { message: "Vercel Blob 저장소가 연결되지 않았습니다. 프로젝트 Storage에서 Blob을 연결해 주세요." },
+        { message: "Vercel Blob 저장소가 연결되지 않았습니다. Storage 연결에서 MEDIA 읽기/쓰기 토큰을 추가해 주세요." },
         { status: 503 },
       );
     }
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
     const response = await handleUpload({
       body,
       request,
+      token,
       onBeforeGenerateToken: async (pathname) => {
         if (!pathname.startsWith("submissions/")) {
           throw new Error("허용되지 않은 업로드 경로입니다.");

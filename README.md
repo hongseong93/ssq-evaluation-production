@@ -24,7 +24,7 @@ Administrator and judge evaluation system built with Next.js, Supabase, and Verc
 3. In your new Vercel project, add these Production environment variables:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
-4. In Vercel, open **Storage**, create a public **Blob** store, and connect it to this project. Vercel adds `BLOB_READ_WRITE_TOKEN` automatically.
+4. In Vercel, open **Storage**, create a public **Blob** store, and connect it to this project with the `MEDIA` variable prefix and the read-write token option enabled. Vercel adds `MEDIA_READ_WRITE_TOKEN` automatically.
 5. Connect this repository to Vercel and deploy.
 
 Use the URL and service-role key from Supabase **Project Settings > API**. The service-role key must only be stored in Vercel environment variables. Do not expose it to the browser or commit it to GitHub.
