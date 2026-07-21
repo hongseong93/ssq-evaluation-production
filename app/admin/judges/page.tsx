@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Edit3, KeyRound, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { AdminShell, Badge, Button, Card, DataTable, Field, TextInput } from "@/components/ui";
 import { divisionLabels } from "@/lib/data";
+import { formatKoreanDateTime } from "@/lib/date-time";
 import { judgeProgress } from "@/lib/scoring";
 import type { Judge } from "@/lib/types";
 
@@ -144,7 +145,7 @@ export default function JudgesPage() {
                   progress.assigned,
                   `${progress.completed + progress.submitted} / ${progress.assigned}`,
                   <Badge key="active" tone={judge.isActive ? "green" : "gray"}>{judge.isActive ? "활성" : "비활성"}</Badge>,
-                  judge.lastSeen,
+                  formatKoreanDateTime(judge.lastSeen),
                   <div key="manage" className="flex items-center gap-1">
                     <button type="button" title="심사위원 수정" aria-label={`${judge.name} 수정`} className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-navy-900" onClick={() => startEdit(judge)}><Edit3 size={16} /></button>
                     <button type="button" title="심사위원 삭제" aria-label={`${judge.name} 삭제`} className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40" disabled={deletingId === judge.id} onClick={() => void removeJudge(judge)}><Trash2 size={16} /></button>

@@ -95,8 +95,9 @@ function publicUser(user: User) {
 }
 
 async function updateLastSeen(user: User) {
-  user.lastSeen = new Date().toISOString().slice(0, 16).replace("T", " ");
-  user.updatedAt = new Date().toISOString();
+  const now = new Date().toISOString();
+  user.lastSeen = now;
+  user.updatedAt = now;
 
   if (!hasSupabaseConfig()) {
     if (process.env.VERCEL) requireDatabase();
