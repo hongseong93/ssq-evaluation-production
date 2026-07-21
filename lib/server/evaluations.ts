@@ -28,7 +28,13 @@ export async function getEvaluation(judgeId: string, submissionId: string) {
   return data as EvaluationRecord | null;
 }
 
-export async function saveEvaluation(judgeId: string, submissionId: string, scoreEntries: ScoreEntry[], status: AssignmentStatus) {
+export async function saveEvaluation(
+  judgeId: string,
+  submissionId: string,
+  scoreEntries: ScoreEntry[],
+  status: AssignmentStatus,
+  options: { reopen?: boolean } = {}
+) {
   let resolvedStatus = status;
   if (status === "draft") {
     if (!hasSupabaseConfig()) {
@@ -48,13 +54,13 @@ export async function saveEvaluation(judgeId: string, submissionId: string, scor
   const record: EvaluationRecord = { judge_id: judgeId, submission_id: submissionId, score_entries: scoreEntries, status: resolvedStatus };
   if (!hasSupabaseConfig()) {
     const existing = localRecords.get(keyFor(judgeId, submissionId));
-    if (existing?.status === "submitted" && resolvedStatus !== "submitted") return existing;
+    if (existing?.status === "submitted" && resolvedStatus !== "submitted" && !options.reopen) return existing;
     localRecords.set(keyFor(judgeId, submissionId), record);
     return record;
   }
 
   const db = getSupabaseAdmin();
-  if (resolvedStatus !== "submitted") {
+  if (resolvedStatus !== "submitted" && !options.reopen) {
     // Conditional updates make the submitted state monotonic even when an
     // in-flight autosave request finishes after the final-submit request.
     const { data: updated, error: updateError } = await db.from("evaluation_records")

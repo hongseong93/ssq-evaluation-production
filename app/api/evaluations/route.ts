@@ -18,11 +18,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { judgeId, submissionId, scoreEntries, status } = await request.json();
+    const { judgeId, submissionId, scoreEntries, status, reopen } = await request.json();
     if (!judgeId || !submissionId || !Array.isArray(scoreEntries) || !["draft", "submitted"].includes(status)) {
       return NextResponse.json({ message: "Invalid evaluation payload." }, { status: 400 });
     }
-    return NextResponse.json({ evaluation: await saveEvaluation(judgeId, submissionId, scoreEntries, status) });
+    return NextResponse.json({ evaluation: await saveEvaluation(judgeId, submissionId, scoreEntries, status, { reopen: reopen === true }) });
   } catch (error) {
     return NextResponse.json({ message: error instanceof Error ? error.message : "Unable to save evaluation." }, { status: 500 });
   }

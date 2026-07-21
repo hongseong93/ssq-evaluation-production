@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, LockKeyhole, LogOut, Save, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole, LogOut, Pencil, Save, Send } from "lucide-react";
 import type { AssignmentStatus, Criterion, Judge, ScoreEntry, Submission } from "@/lib/types";
 import { Badge, BrandMark, Button, Card, ProgressBar } from "./ui";
 
@@ -66,6 +66,7 @@ export function JudgeEvaluation() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [reopenedSubmissionIds, setReopenedSubmissionIds] = useState<Set<string>>(() => new Set());
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -204,6 +205,32 @@ export function JudgeEvaluation() {
     if (shouldAdvance && nextCriterionId) window.setTimeout(() => setActiveCriterionId(nextCriterionId), 350);
   }
 
+  async function reopenCurrentEvaluation() {
+    if (!judge || !current || assignment?.status !== "submitted") return;
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+    const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft", reopen: true }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || "평가를 수정 상태로 전환하지 못했습니다.");
+      const savedStatus = body.evaluation?.status ?? "completed";
+      setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
+      setReopenedSubmissionIds((previous) => new Set(previous).add(current.id));
+      setMessage("평가 수정이 가능합니다. 점수를 변경한 뒤 수정 제출해 주세요.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "평가를 수정 상태로 전환하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveCurrentEvaluation(status: "draft" | "submitted") {
     if (!judge || !current) return;
     if (draftTimer.current) clearTimeout(draftTimer.current);
@@ -229,7 +256,17 @@ export function JudgeEvaluation() {
       if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
       const savedStatus = body.evaluation?.status ?? status;
       setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
-      setMessage(savedStatus === "submitted" ? "최종 제출되었습니다. 관리자 화면에 점수가 반영됩니다." : "임시 저장되었습니다.");
+      if (savedStatus === "submitted") {
+        const wasReopened = reopenedSubmissionIds.has(current.id);
+        setReopenedSubmissionIds((previous) => {
+          const next = new Set(previous);
+          next.delete(current.id);
+          return next;
+        });
+        setMessage(wasReopened ? "수정한 평가가 다시 제출되었습니다. 관리자 화면에 점수가 반영됩니다." : "최종 제출되었습니다. 관리자 화면에 점수가 반영됩니다.");
+      } else {
+        setMessage("임시 저장되었습니다.");
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");
     } finally {
@@ -261,6 +298,13 @@ export function JudgeEvaluation() {
           if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
           const savedStatus = body.evaluation?.status ?? (isCurrentComplete ? "submitted" : "draft");
           setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
+          if (savedStatus === "submitted") {
+            setReopenedSubmissionIds((previous) => {
+              const next = new Set(previous);
+              next.delete(current.id);
+              return next;
+            });
+          }
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");
           return;
@@ -345,7 +389,7 @@ export function JudgeEvaluation() {
         </div>
 
         {message && <p className="rounded-md border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">{message}</p>}
-        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-[1560px] items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={previousTargetIndex < 0} onClick={() => void moveSubmission(previousTargetIndex)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> {assignment?.status === "submitted" ? "제출 완료" : "최종 제출"}</Button></div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={nextTargetIndex < 0 || !isCurrentComplete} onClick={() => void moveSubmission(nextTargetIndex)}>{nextSubmissionInDivision ? "다음 작품" : nextDivision ? "다음 부문" : "심사 완료"} <ArrowRight size={16} /></Button></div></div>
+        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-[1560px] items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={previousTargetIndex < 0} onClick={() => void moveSubmission(previousTargetIndex)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2">{assignment?.status === "submitted" ? <Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void reopenCurrentEvaluation()}><Pencil size={16} /> 평가 수정하기</Button> : <><Button variant="secondary" className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> {reopenedSubmissionIds.has(current.id) ? "수정 제출" : "최종 제출"}</Button></>}</div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={nextTargetIndex < 0 || !isCurrentComplete} onClick={() => void moveSubmission(nextTargetIndex)}>{nextSubmissionInDivision ? "다음 작품" : nextDivision ? "다음 부문" : "심사 완료"} <ArrowRight size={16} /></Button></div></div>
       </main>
     </div>
   );
