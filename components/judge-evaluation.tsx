@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, LogOut, Save, Send } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, LockKeyhole, LogOut, Save, Send } from "lucide-react";
 import type { AssignmentStatus, Criterion, Judge, ScoreEntry, Submission } from "@/lib/types";
 import { Badge, BrandMark, Button, Card, ProgressBar, TextArea } from "./ui";
 
@@ -18,6 +18,7 @@ type WorkspaceResponse = {
 };
 
 const divisionLabels = { template: "Template Creation", original: "Original Creation" } as const;
+const divisionOrder = ["template", "original"] as const;
 
 function normalizeSubmission(row: Record<string, unknown>): Submission {
   return {
@@ -80,7 +81,11 @@ export function JudgeEvaluation() {
         const body = (await response.json()) as WorkspaceResponse;
         if (!response.ok) throw new Error(body.message || "심사 데이터를 불러오지 못했습니다.");
         setJudge(body.judge);
-        setSubmissions(body.submissions.map(normalizeSubmission));
+        setSubmissions(body.submissions.map(normalizeSubmission).sort((a, b) => {
+          const divisionDifference = divisionOrder.indexOf(a.division) - divisionOrder.indexOf(b.division);
+          if (divisionDifference !== 0) return divisionDifference;
+          return a.createdAt.localeCompare(b.createdAt);
+        }));
         setCriteria(body.criteria.map(normalizeCriterion));
         setAssignments(body.assignments ?? []);
         setLocalScores((body.evaluations ?? []).flatMap((evaluation) => evaluation.score_entries ?? evaluation.scoreEntries ?? []));
@@ -98,7 +103,37 @@ export function JudgeEvaluation() {
   const activeCriterionIndex = activeCriterion ? currentCriteria.findIndex((item) => item.id === activeCriterion.id) : 0;
   const assignment = assignments.find((item) => (item.submission_id ?? item.submissionId) === current?.id);
   const activeEntry = localScores.find((item) => item.judgeId === judge?.id && item.submissionId === current?.id && item.criterionId === activeCriterion?.id);
-  const progress = submissions.length ? Math.round(((submissionIndex + 1) / submissions.length) * 100) : 0;
+  const availableDivisions = divisionOrder.filter((division) => submissions.some((submission) => submission.division === division));
+  const currentDivisionSubmissions = submissions.filter((submission) => submission.division === current?.division);
+  const currentDivisionIndex = currentDivisionSubmissions.findIndex((submission) => submission.id === current?.id);
+  const currentDivisionProgress = currentDivisionSubmissions.length ? Math.round(((currentDivisionIndex + 1) / currentDivisionSubmissions.length) * 100) : 0;
+
+  function assignmentStatus(submissionId: string) {
+    return assignments.find((item) => (item.submission_id ?? item.submissionId) === submissionId)?.status;
+  }
+
+  function divisionCompletion(division: Submission["division"]) {
+    const rows = submissions.filter((submission) => submission.division === division);
+    const completed = rows.filter((submission) => ["completed", "submitted"].includes(assignmentStatus(submission.id) ?? "not_started")).length;
+    return { completed, total: rows.length, isComplete: rows.length > 0 && completed === rows.length };
+  }
+
+  function divisionIsLocked(division: Submission["division"]) {
+    const divisionIndex = availableDivisions.indexOf(division);
+    return divisionIndex > 0 && availableDivisions.slice(0, divisionIndex).some((previousDivision) => !divisionCompletion(previousDivision).isComplete);
+  }
+
+  function selectDivision(division: Submission["division"]) {
+    if (division === current?.division) return;
+    if (divisionIsLocked(division)) {
+      setMessage(`${divisionLabels[availableDivisions[availableDivisions.indexOf(division) - 1]]} 심사를 먼저 완료해 주세요.`);
+      return;
+    }
+    const divisionRows = submissions.filter((submission) => submission.division === division);
+    const target = divisionRows.find((submission) => !["completed", "submitted"].includes(assignmentStatus(submission.id) ?? "not_started")) ?? divisionRows[0];
+    const targetIndex = submissions.findIndex((submission) => submission.id === target?.id);
+    if (targetIndex >= 0) void moveSubmission(targetIndex);
+  }
 
   const total = useMemo(() => {
     if (!current || !judge) return 0;
@@ -115,6 +150,15 @@ export function JudgeEvaluation() {
       return criterion.questions.length > 0 && criterion.questions.every((_, index) => Number(entry?.questionScores[index] || 0) > 0);
     });
   }, [current, currentCriteria, judge, localScores]);
+
+  const currentDivisionPosition = availableDivisions.indexOf(current?.division ?? "template");
+  const nextSubmissionInDivision = currentDivisionSubmissions[currentDivisionIndex + 1];
+  const nextDivision = availableDivisions[currentDivisionPosition + 1];
+  const nextDivisionSubmission = nextDivision ? submissions.find((submission) => submission.division === nextDivision) : undefined;
+  const nextTarget = nextSubmissionInDivision ?? nextDivisionSubmission;
+  const nextTargetIndex = nextTarget ? submissions.findIndex((submission) => submission.id === nextTarget.id) : -1;
+  const previousSubmissionInDivision = currentDivisionSubmissions[currentDivisionIndex - 1];
+  const previousTargetIndex = previousSubmissionInDivision ? submissions.findIndex((submission) => submission.id === previousSubmissionInDivision.id) : -1;
 
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current);
@@ -266,10 +310,32 @@ export function JudgeEvaluation() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-5 p-5">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {availableDivisions.map((division) => {
+            const divisionState = divisionCompletion(division);
+            const locked = divisionIsLocked(division);
+            const active = current.division === division;
+            return (
+              <button
+                key={division}
+                type="button"
+                disabled={locked}
+                onClick={() => selectDivision(division)}
+                className={`flex min-h-16 items-center justify-between rounded-md border px-4 py-3 text-left transition ${active ? "border-navy-900 bg-navy-900 text-white" : locked ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400" : "border-slate-300 bg-white text-navy-900 hover:border-navy-300 hover:bg-navy-50"}`}
+              >
+                <span>
+                  <span className="block text-sm font-bold">{divisionLabels[division]}</span>
+                  <span className={`mt-1 block text-xs ${active ? "text-white/70" : "text-slate-500"}`}>{divisionState.completed} / {divisionState.total} 작품 완료</span>
+                </span>
+                {locked ? <LockKeyhole size={18} /> : divisionState.isComplete ? <Check size={20} /> : <span className="text-xs font-bold">심사 중</span>}
+              </button>
+            );
+          })}
+        </div>
         <Card className="p-5">
           <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
             <div><div className="flex flex-wrap items-center gap-2"><Badge tone={assignment?.status === "submitted" ? "green" : assignment?.status === "draft" ? "gold" : "gray"}>{statusLabel(assignment?.status)}</Badge><span className="text-sm font-semibold text-slate-500">{current.receiptNumber}</span></div><h2 className="mt-3 text-3xl font-bold text-navy-900">{current.artworkTitle}</h2><p className="mt-2 text-sm text-slate-500">작가명 {current.artistName} · 영상 제목 {current.videoTitle}</p><p className="mt-4 max-w-3xl text-sm leading-6 text-slate-700">{current.concept}</p></div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between text-sm font-semibold text-navy-900"><span>진행 상황</span><span>{String(submissionIndex + 1).padStart(2, "0")} / {submissions.length}</span></div><div className="mt-3"><ProgressBar value={progress} /></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-slate-500">현재 총점</p><p className="text-2xl font-bold text-navy-900">{total.toFixed(1)}</p></div><div><p className="text-slate-500">지원 부문</p><p className="font-semibold text-navy-900">{divisionLabels[current.division]}</p></div></div></div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between text-sm font-semibold text-navy-900"><span>{divisionLabels[current.division]} 진행</span><span>{String(currentDivisionIndex + 1).padStart(2, "0")} / {currentDivisionSubmissions.length}</span></div><div className="mt-3"><ProgressBar value={currentDivisionProgress} /></div><div className="mt-4 grid grid-cols-2 gap-3 text-sm"><div><p className="text-slate-500">현재 총점</p><p className="text-2xl font-bold text-navy-900">{total.toFixed(1)}</p></div><div><p className="text-slate-500">지원 부문</p><p className="font-semibold text-navy-900">{divisionLabels[current.division]}</p></div></div></div>
           </div>
         </Card>
 
@@ -289,7 +355,7 @@ export function JudgeEvaluation() {
         </div>
 
         {message && <p className="rounded-md border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">{message}</p>}
-        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={submissionIndex === 0} onClick={() => void moveSubmission(submissionIndex - 1)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> {assignment?.status === "submitted" ? "제출 완료" : "최종 제출"}</Button></div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={submissionIndex === submissions.length - 1 || !isCurrentComplete} onClick={() => void moveSubmission(submissionIndex + 1)}>다음 작품 <ArrowRight size={16} /></Button></div></div>
+        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-7xl items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={previousTargetIndex < 0} onClick={() => void moveSubmission(previousTargetIndex)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> {assignment?.status === "submitted" ? "제출 완료" : "최종 제출"}</Button></div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={nextTargetIndex < 0 || !isCurrentComplete} onClick={() => void moveSubmission(nextTargetIndex)}>{nextSubmissionInDivision ? "다음 작품" : nextDivision ? "다음 부문" : "심사 완료"} <ArrowRight size={16} /></Button></div></div>
       </main>
     </div>
   );
