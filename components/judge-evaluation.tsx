@@ -151,6 +151,22 @@ export function JudgeEvaluation() {
     });
   }, [current, currentCriteria, judge, localScores]);
 
+  const allEvaluationsComplete = useMemo(() => {
+    if (!judge || submissions.length === 0) return false;
+    return submissions.every((submission) => {
+      const submissionCriteria = criteria.filter((criterion) => criterion.division === submission.division);
+      return submissionCriteria.length > 0 && submissionCriteria.every((criterion) => {
+        const entry = localScores.find((item) => item.judgeId === judge.id && item.submissionId === submission.id && item.criterionId === criterion.id);
+        return criterion.questions.length > 0 && criterion.questions.every((_, index) => Number(entry?.questionScores[index] || 0) > 0);
+      });
+    });
+  }, [criteria, judge, localScores, submissions]);
+
+  const allEvaluationsSubmitted = useMemo(
+    () => submissions.length > 0 && submissions.every((submission) => assignmentStatus(submission.id) === "submitted"),
+    [assignments, submissions]
+  );
+
   const currentDivisionPosition = availableDivisions.indexOf(current?.division ?? "template");
   const nextSubmissionInDivision = currentDivisionSubmissions[currentDivisionIndex + 1];
   const nextDivision = availableDivisions[currentDivisionPosition + 1];
@@ -162,7 +178,7 @@ export function JudgeEvaluation() {
 
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    if (!judge || !current || loading || assignment?.status === "submitted") return;
+    if (!judge || !current || loading || allEvaluationsSubmitted) return;
 
     const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
     const hasScore = scoreEntries.some((entry) => entry.questionScores.some((score) => Number(score) > 0));
@@ -186,10 +202,10 @@ export function JudgeEvaluation() {
     return () => {
       if (draftTimer.current) clearTimeout(draftTimer.current);
     };
-  }, [assignment?.status, current, judge, loading, localScores]);
+  }, [allEvaluationsSubmitted, current, judge, loading, localScores]);
 
   function updateQuestionScore(questionIndex: number, value: number) {
-    if (!judge || !current || !activeCriterion || assignment?.status === "submitted") return;
+    if (!judge || !current || !activeCriterion || allEvaluationsSubmitted) return;
     const nextCriterionId = currentCriteria[activeCriterionIndex + 1]?.id;
     let shouldAdvance = false;
 
@@ -204,34 +220,56 @@ export function JudgeEvaluation() {
     if (shouldAdvance && nextCriterionId) window.setTimeout(() => setActiveCriterionId(nextCriterionId), 350);
   }
 
-  async function saveCurrentEvaluation(status: "draft" | "submitted") {
+  async function saveCurrentEvaluation() {
     if (!judge || !current) return;
     if (draftTimer.current) clearTimeout(draftTimer.current);
     const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
-    const complete = currentCriteria.every((criterion) => {
-      const entry = scoreEntries.find((item) => item.criterionId === criterion.id);
-      return criterion.questions.every((_, index) => Number(entry?.questionScores[index] || 0) > 0);
-    });
-    if (status === "submitted" && !complete) {
-      setMessage("모든 평가 문항에 점수를 입력한 뒤 최종 제출해 주세요.");
-      return;
-    }
-
     setSaving(true);
     setMessage("");
     try {
       const response = await fetch("/api/evaluations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status }),
+        body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft" }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
-      const savedStatus = body.evaluation?.status ?? status;
+      const savedStatus = body.evaluation?.status ?? "draft";
       setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
-      setMessage(savedStatus === "submitted" ? "최종 제출되었습니다. 관리자 화면에 점수가 반영됩니다." : "임시 저장되었습니다.");
+      setMessage(savedStatus === "completed" ? "현재 작품의 평가가 저장되었습니다. 최종 제출 전까지 수정할 수 있습니다." : "임시 저장되었습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitAllEvaluations() {
+    if (!judge || !allEvaluationsComplete || allEvaluationsSubmitted) {
+      if (!allEvaluationsComplete) setMessage("모든 작품의 평가항목을 완료한 뒤 최종 제출해 주세요.");
+      return;
+    }
+    if (draftTimer.current) clearTimeout(draftTimer.current);
+
+    setSaving(true);
+    setMessage("");
+    try {
+      await Promise.all(submissions.map(async (submission) => {
+        const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === submission.id);
+        const response = await fetch("/api/evaluations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ judgeId: judge.id, submissionId: submission.id, scoreEntries, status: "submitted" }),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || `${submission.receiptNumber} 평가를 제출하지 못했습니다.`);
+      }));
+
+      const submittedIds = new Set(submissions.map((submission) => submission.id));
+      setAssignments((previous) => previous.map((item) => submittedIds.has((item.submission_id ?? item.submissionId) || "") ? { ...item, status: "submitted" } : item));
+      setMessage("모든 작품의 평가가 최종 제출되었습니다. 이제 평가 내용을 수정할 수 없습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "최종 제출을 완료하지 못했습니다.");
     } finally {
       setSaving(false);
     }
@@ -248,18 +286,18 @@ export function JudgeEvaluation() {
       return;
     }
     if (draftTimer.current) clearTimeout(draftTimer.current);
-    if (judge && current && assignment?.status !== "submitted") {
+    if (judge && current && !allEvaluationsSubmitted) {
       const scoreEntries = localScores.filter((item) => item.judgeId === judge.id && item.submissionId === current.id);
       if (scoreEntries.some((entry) => entry.questionScores.some((score) => Number(score) > 0))) {
         try {
           const response = await fetch("/api/evaluations", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: isCurrentComplete ? "submitted" : "draft" }),
+            body: JSON.stringify({ judgeId: judge.id, submissionId: current.id, scoreEntries, status: "draft" }),
           });
           const body = await response.json();
           if (!response.ok) throw new Error(body.message || "평가를 저장하지 못했습니다.");
-          const savedStatus = body.evaluation?.status ?? (isCurrentComplete ? "submitted" : "draft");
+          const savedStatus = body.evaluation?.status ?? "draft";
           setAssignments((previous) => previous.map((item) => (item.submission_id ?? item.submissionId) === current.id ? { ...item, status: savedStatus } : item));
         } catch (error) {
           setMessage(error instanceof Error ? error.message : "평가를 저장하지 못했습니다.");
@@ -339,13 +377,13 @@ export function JudgeEvaluation() {
           <Card className="p-5">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">{currentCriteria.map((criterion) => { const entry = localScores.find((item) => item.judgeId === judge.id && item.submissionId === current.id && item.criterionId === criterion.id); const complete = Boolean(entry) && criterion.questions.every((_, index) => Number(entry?.questionScores[index] || 0) > 0); return <div key={criterion.id} className={`flex min-h-10 items-center justify-center whitespace-nowrap rounded-md px-2 py-2 text-center text-xs font-semibold ${criterion.id === activeCriterion.id ? "bg-navy-900 text-white" : complete ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{criterion.title}</div>; })}</div>
             <div className="mt-5 border-b border-slate-200 pb-4"><div className="flex items-start justify-between gap-4"><div><h3 className="text-xl font-bold text-navy-900">{activeCriterion.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{activeCriterion.description}</p></div><Badge tone="gold">{activeCriterion.maxScore}점</Badge></div></div>
-            <div className="mt-5 space-y-5">{activeCriterion.questions.map((question, questionIndex) => <div key={`${activeCriterion.id}-${questionIndex}`} className="rounded-lg border border-slate-200 p-4"><p className="text-sm font-semibold text-slate-800">{question}</p><div className="mt-3 grid grid-cols-5 gap-2">{[1, 2, 3, 4, 5].map((value) => <button key={value} disabled={assignment?.status === "submitted"} onClick={() => updateQuestionScore(questionIndex, value)} className={`h-10 rounded-md border text-sm font-bold disabled:cursor-not-allowed ${activeEntry?.questionScores[questionIndex] === value ? "border-navy-900 bg-navy-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:bg-navy-50 disabled:hover:bg-white"}`}>{value}</button>)}</div><div className="mt-2 flex justify-between text-xs text-slate-400"><span>전혀 아니다</span><span>매우 그렇다</span></div></div>)}</div>
+            <div className="mt-5 space-y-5">{activeCriterion.questions.map((question, questionIndex) => <div key={`${activeCriterion.id}-${questionIndex}`} className="rounded-lg border border-slate-200 p-4"><p className="text-sm font-semibold text-slate-800">{question}</p><div className="mt-3 grid grid-cols-5 gap-2">{[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} disabled={allEvaluationsSubmitted} onClick={() => updateQuestionScore(questionIndex, value)} className={`h-10 rounded-md border text-sm font-bold disabled:cursor-not-allowed ${activeEntry?.questionScores[questionIndex] === value ? "border-navy-900 bg-navy-900 text-white" : "border-slate-300 bg-white text-slate-600 hover:bg-navy-50 disabled:hover:bg-white"}`}>{value}</button>)}</div><div className="mt-2 flex justify-between text-xs text-slate-400"><span>전혀 아니다</span><span>매우 그렇다</span></div></div>)}</div>
             <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-slate-200 pt-4"><Button variant="secondary" className="justify-self-start gap-2 disabled:opacity-40" disabled={activeCriterionIndex === 0} onClick={() => setActiveCriterionId(currentCriteria[activeCriterionIndex - 1]?.id)}><ArrowLeft size={16} /> 이전 평가항목</Button><div className="text-sm font-semibold text-slate-500">{activeCriterionIndex + 1} / {currentCriteria.length}</div><Button variant="secondary" className="justify-self-end gap-2 disabled:opacity-40" disabled={activeCriterionIndex === currentCriteria.length - 1} onClick={() => setActiveCriterionId(currentCriteria[activeCriterionIndex + 1]?.id)}>다음 평가항목 <ArrowRight size={16} /></Button></div>
           </Card>
         </div>
 
         {message && <p className="rounded-md border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">{message}</p>}
-        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-[1560px] items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button variant="secondary" className="justify-self-start gap-2" disabled={previousTargetIndex < 0} onClick={() => void moveSubmission(previousTargetIndex)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-wrap justify-center gap-2"><Button variant="secondary" className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("draft")}><Save size={16} /> 임시 저장</Button><Button className="gap-2" disabled={saving || assignment?.status === "submitted"} onClick={() => void saveCurrentEvaluation("submitted")}><Send size={16} /> {assignment?.status === "submitted" ? "제출 완료" : "최종 제출"}</Button></div><Button title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={nextTargetIndex < 0 || !isCurrentComplete} onClick={() => void moveSubmission(nextTargetIndex)}>{nextSubmissionInDivision ? "다음 작품" : nextDivision ? "다음 부문" : "심사 완료"} <ArrowRight size={16} /></Button></div></div>
+        <div className="sticky bottom-0 -mx-5 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur"><div className="mx-auto grid max-w-[1560px] items-center gap-3 md:grid-cols-[1fr_auto_1fr]"><Button type="button" variant="secondary" className="justify-self-start gap-2" disabled={previousTargetIndex < 0} onClick={() => void moveSubmission(previousTargetIndex)}><ArrowLeft size={16} /> 이전 작품</Button><div className="flex flex-col items-center gap-2"><p className="max-w-xl text-center text-xs font-medium leading-5 text-slate-500">모든 작품의 평가를 완료하신 후에 눌러주세요. 최종 제출 이후 수정이 불가합니다.</p><div className="flex flex-wrap justify-center gap-2"><Button type="button" variant="secondary" className="gap-2" disabled={saving || allEvaluationsSubmitted} onClick={() => void saveCurrentEvaluation()}><Save size={16} /> 임시 저장</Button><Button type="button" title={!allEvaluationsComplete ? "모든 작품의 평가를 완료해 주세요." : undefined} className="gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={saving || !allEvaluationsComplete || allEvaluationsSubmitted} onClick={() => void submitAllEvaluations()}><Send size={16} /> {allEvaluationsSubmitted ? "제출 완료" : "최종 제출"}</Button></div></div><Button type="button" title={!isCurrentComplete ? "5가지 평가항목을 모두 완료해 주세요." : undefined} className="justify-self-end gap-2 disabled:cursor-not-allowed disabled:opacity-40" disabled={nextTargetIndex < 0 || !isCurrentComplete} onClick={() => void moveSubmission(nextTargetIndex)}>{nextSubmissionInDivision ? "다음 작품" : nextDivision ? "다음 부문" : "심사 완료"} <ArrowRight size={16} /></Button></div></div>
       </main>
     </div>
   );

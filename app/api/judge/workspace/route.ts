@@ -13,7 +13,11 @@ export async function GET(request: Request) {
     if (!hasSupabaseConfig()) {
       const judge = demoJudges.find((item) => item.id === judgeId);
       if (!judge) return NextResponse.json({ message: "심사위원을 찾을 수 없습니다." }, { status: 404 });
-      const judgeAssignments = demoAssignments.filter((item) => item.judgeId === judgeId);
+      const rawAssignments = demoAssignments.filter((item) => item.judgeId === judgeId);
+      const allSubmitted = rawAssignments.length > 0 && rawAssignments.every((item) => item.status === "submitted");
+      const judgeAssignments = allSubmitted
+        ? rawAssignments
+        : rawAssignments.map((item) => item.status === "submitted" ? { ...item, status: "completed" as const } : item);
       const assignedIds = new Set(judgeAssignments.map((item) => item.submissionId));
       return NextResponse.json({
         judge,
@@ -57,7 +61,29 @@ export async function GET(request: Request) {
 
     const { data: syncedAssignments, error: syncError } = await db.from("judge_assignments").select("*").eq("judge_id", judgeId);
     if (syncError) throw new Error(syncError.message);
-    const syncedIds = new Set((syncedAssignments ?? []).map((assignment) => assignment.submission_id));
+    let finalAssignments = syncedAssignments ?? [];
+    const allSubmitted = finalAssignments.length > 0 && finalAssignments.every((assignment) => assignment.status === "submitted");
+    const partiallySubmittedIds = allSubmitted ? [] : finalAssignments.filter((assignment) => assignment.status === "submitted").map((assignment) => assignment.submission_id);
+
+    if (partiallySubmittedIds.length) {
+      const { error: evaluationDraftError } = await db.from("evaluation_records")
+        .update({ status: "draft", updated_at: new Date().toISOString() })
+        .eq("judge_id", judgeId)
+        .in("submission_id", partiallySubmittedIds);
+      if (evaluationDraftError) throw new Error(evaluationDraftError.message);
+
+      const { error: assignmentDraftError } = await db.from("judge_assignments")
+        .update({ status: "completed", updated_at: new Date().toISOString() })
+        .eq("judge_id", judgeId)
+        .in("submission_id", partiallySubmittedIds);
+      if (assignmentDraftError) throw new Error(assignmentDraftError.message);
+
+      finalAssignments = finalAssignments.map((assignment) => partiallySubmittedIds.includes(assignment.submission_id)
+        ? { ...assignment, status: "completed" }
+        : assignment);
+    }
+
+    const syncedIds = new Set(finalAssignments.map((assignment) => assignment.submission_id));
 
     return NextResponse.json({
       judge: {
@@ -81,7 +107,7 @@ export async function GET(request: Request) {
         questions: item.questions,
         display_order: item.order,
       })),
-      assignments: syncedAssignments ?? [],
+      assignments: finalAssignments,
       evaluations: evaluationResult.data ?? [],
     });
   } catch (error) {

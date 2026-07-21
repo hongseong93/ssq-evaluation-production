@@ -29,36 +29,37 @@ export async function getEvaluation(judgeId: string, submissionId: string) {
 }
 
 export async function saveEvaluation(judgeId: string, submissionId: string, scoreEntries: ScoreEntry[], status: AssignmentStatus) {
-  let resolvedStatus = status;
+  let assignmentStatus = status;
   if (status === "draft") {
     if (!hasSupabaseConfig()) {
       const submission = demoSubmissions.find((item) => item.id === submissionId);
       const criteria = demoCriteria.filter((item) => item.division === submission?.division);
-      if (evaluationIsComplete(scoreEntries, criteria)) resolvedStatus = "completed";
+      if (evaluationIsComplete(scoreEntries, criteria)) assignmentStatus = "completed";
     } else {
       const db = getSupabaseAdmin();
       const { data: submission, error: submissionError } = await db.from("competition_submissions").select("division").eq("id", submissionId).single();
       if (submissionError) throw new Error(submissionError.message);
       const { data: criteria, error: criteriaError } = await db.from("competition_criteria").select("id,questions").eq("division", submission.division);
       if (criteriaError) throw new Error(criteriaError.message);
-      if (evaluationIsComplete(scoreEntries, criteria ?? [])) resolvedStatus = "completed";
+      if (evaluationIsComplete(scoreEntries, criteria ?? [])) assignmentStatus = "completed";
     }
   }
 
-  const record: EvaluationRecord = { judge_id: judgeId, submission_id: submissionId, score_entries: scoreEntries, status: resolvedStatus };
+  const recordStatus: AssignmentStatus = status === "submitted" ? "submitted" : "draft";
+  const record: EvaluationRecord = { judge_id: judgeId, submission_id: submissionId, score_entries: scoreEntries, status: recordStatus };
   if (!hasSupabaseConfig()) {
     const existing = localRecords.get(keyFor(judgeId, submissionId));
-    if (existing?.status === "submitted" && resolvedStatus !== "submitted") return existing;
+    if (existing?.status === "submitted" && recordStatus !== "submitted") return existing;
     localRecords.set(keyFor(judgeId, submissionId), record);
-    return record;
+    return { ...record, status: assignmentStatus };
   }
 
   const db = getSupabaseAdmin();
-  if (resolvedStatus !== "submitted") {
+  if (recordStatus !== "submitted") {
     // Conditional updates make the submitted state monotonic even when an
     // in-flight autosave request finishes after the final-submit request.
     const { data: updated, error: updateError } = await db.from("evaluation_records")
-      .update({ score_entries: scoreEntries, status: resolvedStatus })
+      .update({ score_entries: scoreEntries, status: recordStatus })
       .eq("judge_id", judgeId)
       .eq("submission_id", submissionId)
       .neq("status", "submitted")
@@ -68,12 +69,12 @@ export async function saveEvaluation(judgeId: string, submissionId: string, scor
 
     if (updated) {
       const { error: assignmentError } = await db.from("judge_assignments")
-        .update({ status: resolvedStatus, updated_at: new Date().toISOString() })
+        .update({ status: assignmentStatus, updated_at: new Date().toISOString() })
         .eq("judge_id", judgeId)
         .eq("submission_id", submissionId)
         .neq("status", "submitted");
       if (assignmentError) throw new Error(assignmentError.message);
-      return updated as EvaluationRecord;
+      return { ...(updated as EvaluationRecord), status: assignmentStatus };
     }
 
     const { data: existing, error: findError } = await db.from("evaluation_records").select("*").eq("judge_id", judgeId).eq("submission_id", submissionId).maybeSingle();
@@ -90,14 +91,14 @@ export async function saveEvaluation(judgeId: string, submissionId: string, scor
       return racedRecord as EvaluationRecord;
     }
     if (insertError) throw new Error(insertError.message);
-    const { error: assignmentError } = await db.from("judge_assignments").update({ status: resolvedStatus, updated_at: new Date().toISOString() }).eq("judge_id", judgeId).eq("submission_id", submissionId).neq("status", "submitted");
+    const { error: assignmentError } = await db.from("judge_assignments").update({ status: assignmentStatus, updated_at: new Date().toISOString() }).eq("judge_id", judgeId).eq("submission_id", submissionId).neq("status", "submitted");
     if (assignmentError) throw new Error(assignmentError.message);
-    return inserted as EvaluationRecord;
+    return { ...(inserted as EvaluationRecord), status: assignmentStatus };
   }
 
   const { data, error } = await db.from("evaluation_records").upsert(record, { onConflict: "judge_id,submission_id" }).select("*").single();
   if (error) throw new Error(error.message);
-  const { error: assignmentError } = await db.from("judge_assignments").update({ status: resolvedStatus, updated_at: new Date().toISOString() }).eq("judge_id", judgeId).eq("submission_id", submissionId);
+  const { error: assignmentError } = await db.from("judge_assignments").update({ status: assignmentStatus, updated_at: new Date().toISOString() }).eq("judge_id", judgeId).eq("submission_id", submissionId);
   if (assignmentError) throw new Error(assignmentError.message);
   return data as EvaluationRecord;
 }
