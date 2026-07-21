@@ -320,7 +320,7 @@ export function JudgeEvaluation() {
   if (!judge || !current) {
     return (
       <div className="min-h-screen bg-slate-100 p-5">
-        <div className="mx-auto max-w-3xl"><BrandMark /><Card className="mt-6 p-8 text-center"><h1 className="text-xl font-bold text-navy-900">배정된 출품작이 없습니다.</h1><p className="mt-3 text-sm text-slate-600">{message || "관리자에게 작품 배정을 확인해 주세요."}</p></Card></div>
+        <div className="mx-auto max-w-3xl"><BrandMark /><Card className="mt-6 p-8 text-center"><h1 className="text-xl font-bold text-navy-900">심사할 출품작이 없습니다.</h1><p className="mt-3 text-sm text-slate-600">{message || "관리자에게 등록된 출품작을 확인해 주세요."}</p></Card></div>
       </div>
     );
   }

@@ -1,4 +1,4 @@
-import { assignments as demoAssignments, criteria as demoCriteria, judges as demoJudges, submissions as demoSubmissions } from "@/lib/data";
+import { assignments as demoAssignments, criteria as demoCriteria, judges as demoJudges, scores as demoScores, submissions as demoSubmissions } from "@/lib/data";
 import { getSupabaseAdmin, hasSupabaseConfig } from "@/lib/server/supabase";
 import { evaluationTotal } from "@/lib/evaluation-score";
 
@@ -17,12 +17,21 @@ export type AdminOverview = {
 
 export async function getAdminOverview(): Promise<AdminOverview> {
   if (!hasSupabaseConfig()) {
+    const evaluations = demoAssignments.map((assignment) => ({
+      judge_id: assignment.judgeId,
+      submission_id: assignment.submissionId,
+      status: assignment.status,
+      score_entries: demoScores
+        .filter((score) => score.judgeId === assignment.judgeId && score.submissionId === assignment.submissionId)
+        .map((score) => ({ criterionId: score.criterionId, questionScores: score.questionScores, note: score.note })),
+    })).filter((evaluation) => evaluation.score_entries.length > 0);
+
     return {
       submissions: demoSubmissions.map((item) => ({ id: item.id, receipt_number: item.receiptNumber, division: item.division, artist_name: item.artistName, artwork_title: item.artworkTitle, video_url: item.videoUrl, created_at: item.createdAt })),
       judges: demoJudges,
       criteria: demoCriteria.map((item) => ({ id: item.id, division: item.division, title: item.title, max_score: item.maxScore, description: item.description, questions: item.questions, display_order: item.order })),
       assignments: demoAssignments.map((item) => ({ judge_id: item.judgeId, submission_id: item.submissionId, status: item.status, updated_at: item.updatedAt })),
-      evaluations: []
+      evaluations,
     };
   }
 

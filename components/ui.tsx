@@ -76,7 +76,6 @@ export function AdminShell({ children, title, eyebrow }: { children: ReactNode; 
     ["/admin/dashboard", "대시보드"],
     ["/admin/submissions", "출품작 관리"],
     ["/admin/judges", "심사위원 관리"],
-    ["/admin/assignments", "작품 배정"],
     ["/admin/criteria", "평가 항목"],
     ["/admin/review-status", "심사 현황"],
     ["/admin/scores/by-judge", "심사위원별 점수"],

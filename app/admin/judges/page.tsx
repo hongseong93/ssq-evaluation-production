@@ -106,7 +106,7 @@ export default function JudgesPage() {
   }
 
   async function removeJudge(judge: Judge) {
-    const confirmed = window.confirm(`'${judge.name}' 심사위원을 삭제하시겠습니까?\n연결된 작품 배정과 평가 기록도 함께 삭제됩니다.`);
+    const confirmed = window.confirm(`'${judge.name}' 심사위원을 삭제하시겠습니까?\n연결된 평가 기록도 함께 삭제됩니다.`);
     if (!confirmed) return;
 
     setDeletingId(judge.id);
