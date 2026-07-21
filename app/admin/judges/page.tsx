@@ -5,8 +5,28 @@ import { Edit3, KeyRound, Plus, RotateCcw, Save, Trash2, X } from "lucide-react"
 import { AdminShell, Badge, Button, Card, DataTable, Field, TextInput } from "@/components/ui";
 import { divisionLabels } from "@/lib/data";
 import { formatKoreanDateTime } from "@/lib/date-time";
-import { judgeProgress } from "@/lib/scoring";
-import type { Judge } from "@/lib/types";
+import { evaluationIsComplete, type EvaluationCriterion, type EvaluationScoreEntry } from "@/lib/evaluation-score";
+import type { Division, Judge } from "@/lib/types";
+
+type JudgeWithProgress = Judge & {
+  assignedCount: number;
+  completedCount: number;
+};
+
+type OverviewSubmission = {
+  id: string;
+  division: Division;
+};
+
+type OverviewCriterion = EvaluationCriterion & {
+  division: Division;
+};
+
+type OverviewEvaluation = {
+  judge_id: string;
+  submission_id: string;
+  score_entries: EvaluationScoreEntry[];
+};
 
 type JudgeForm = {
   name: string;
@@ -31,7 +51,7 @@ const emptyForm: JudgeForm = {
 };
 
 export default function JudgesPage() {
-  const [judges, setJudges] = useState<Judge[]>([]);
+  const [judges, setJudges] = useState<JudgeWithProgress[]>([]);
   const [mode, setMode] = useState<"create" | "edit">("create");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<JudgeForm>(emptyForm);
@@ -47,10 +67,49 @@ export default function JudgesPage() {
 
   async function loadJudges() {
     setIsLoading(true);
-    const response = await fetch("/api/admin/judges");
-    const result = await response.json();
-    setJudges(result.judges || []);
-    setIsLoading(false);
+    try {
+      const [judgesResponse, overviewResponse] = await Promise.all([
+        fetch("/api/admin/judges", { cache: "no-store" }),
+        fetch("/api/admin/overview", { cache: "no-store" })
+      ]);
+      const [judgesResult, overviewResult] = await Promise.all([
+        judgesResponse.json(),
+        overviewResponse.json()
+      ]);
+
+      if (!judgesResponse.ok || !overviewResponse.ok) {
+        throw new Error("심사위원 진행 현황을 불러오지 못했습니다.");
+      }
+
+      const submissions = (overviewResult.submissions || []) as OverviewSubmission[];
+      const criteria = (overviewResult.criteria || []) as OverviewCriterion[];
+      const evaluations = (overviewResult.evaluations || []) as OverviewEvaluation[];
+      const evaluationByJudgeAndSubmission = new Map(
+        evaluations.map((evaluation) => [
+          `${evaluation.judge_id}:${evaluation.submission_id}`,
+          evaluation
+        ])
+      );
+
+      setJudges((judgesResult.judges || []).map((judge: Judge) => {
+        const completedCount = submissions.filter((submission) => {
+          const evaluation = evaluationByJudgeAndSubmission.get(`${judge.id}:${submission.id}`);
+          const submissionCriteria = criteria.filter((criterion) => criterion.division === submission.division);
+          return evaluationIsComplete(evaluation?.score_entries || [], submissionCriteria);
+        }).length;
+
+        return {
+          ...judge,
+          assignedCount: submissions.length,
+          completedCount
+        };
+      }));
+    } catch (error) {
+      setJudges([]);
+      setMessage(error instanceof Error ? error.message : "심사위원 진행 현황을 불러오지 못했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function updateForm<K extends keyof JudgeForm>(key: K, value: JudgeForm[K]) {
@@ -136,14 +195,13 @@ export default function JudgesPage() {
             <DataTable
               headers={["이름", "이메일", "소속", "담당 부문", "배정", "완료", "상태", "마지막 접속", "관리"]}
               rows={judges.map((judge) => {
-                const progress = judgeProgress(judge.id);
                 return [
                   judge.name,
                   judge.email,
                   `${judge.organization} / ${judge.position}`,
                   <Badge key="division">{divisionLabels[judge.division]}</Badge>,
-                  progress.assigned,
-                  `${progress.completed + progress.submitted} / ${progress.assigned}`,
+                  judge.assignedCount,
+                  `${judge.completedCount} / ${judge.assignedCount}`,
                   <Badge key="active" tone={judge.isActive ? "green" : "gray"}>{judge.isActive ? "활성" : "비활성"}</Badge>,
                   formatKoreanDateTime(judge.lastSeen),
                   <div key="manage" className="flex items-center gap-1">
