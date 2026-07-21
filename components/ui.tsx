@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ReactNode } from "react";
+import { LogoutButton } from "./logout-button";
 
 export function BrandMark() {
   return (
@@ -103,7 +104,7 @@ export function AdminShell({ children, title, eyebrow }: { children: ReactNode; 
             </div>
             <div className="hidden items-center gap-3 sm:flex">
               <Badge tone="green">관리자</Badge>
-              <Button variant="secondary">로그아웃</Button>
+              <LogoutButton />
             </div>
           </div>
         </header>

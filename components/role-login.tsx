@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, Mail, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { Badge, BrandMark, Button, Card, Field, TextInput } from "./ui";
@@ -11,36 +11,47 @@ type RoleLoginProps = {
   initialRole?: LoginRole;
 };
 
-const demoAccounts = {
+const accounts = {
   admin: {
     label: "관리자",
-    email: "admin@shinsegaeawards.kr",
-    password: "password",
     helper: "출품작, 심사위원, 배정, 점수표를 관리합니다."
   },
   judge: {
     label: "심사위원",
-    email: "hong@jury.kr",
-    password: "password",
     helper: "배정된 출품작을 보고 항목별 평가를 진행합니다."
   }
 } as const;
 
+function rememberedIdKey(role: LoginRole) {
+  return `review-system-remembered-${role}-id`;
+}
+
 export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
   const router = useRouter();
   const [role, setRole] = useState<LoginRole>(initialRole);
-  const [email, setEmail] = useState<string>(demoAccounts[initialRole].email);
-  const [password, setPassword] = useState<string>(demoAccounts[initialRole].password);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [rememberId, setRememberId] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const account = useMemo(() => demoAccounts[role], [role]);
+  const account = useMemo(() => accounts[role], [role]);
+
+  useEffect(() => {
+    const savedId = window.localStorage.getItem(rememberedIdKey(role)) ?? "";
+    setEmail(savedId);
+    setPassword("");
+    setRememberId(Boolean(savedId));
+  }, [role]);
 
   function selectRole(nextRole: LoginRole) {
     setRole(nextRole);
-    setEmail(demoAccounts[nextRole].email);
-    setPassword(demoAccounts[nextRole].password);
     setError("");
+  }
+
+  function toggleRememberId(checked: boolean) {
+    setRememberId(checked);
+    if (!checked) window.localStorage.removeItem(rememberedIdKey(role));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,7 +63,7 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, role })
+      body: JSON.stringify({ email: email.trim(), password, role })
     });
 
     const result = await response.json().catch(() => ({}));
@@ -62,6 +73,11 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
       return;
     }
 
+    if (rememberId) {
+      window.localStorage.setItem(rememberedIdKey(role), email.trim());
+    } else {
+      window.localStorage.removeItem(rememberedIdKey(role));
+    }
     window.localStorage.setItem("review-system-user", JSON.stringify(result.user));
     router.push(result.user.role === "admin" ? "/admin/dashboard" : "/judge/evaluation");
     } catch {
@@ -93,7 +109,7 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
           >
             <ShieldCheck className="text-navy-700" size={22} />
             <p className="mt-3 font-bold text-navy-900">관리자</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">{demoAccounts.admin.helper}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{accounts.admin.helper}</p>
           </button>
           <button
             type="button"
@@ -102,7 +118,7 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
           >
             <UserRoundCheck className="text-navy-700" size={22} />
             <p className="mt-3 font-bold text-navy-900">심사위원</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500">{demoAccounts.judge.helper}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">{accounts.judge.helper}</p>
           </button>
         </div>
 
@@ -110,25 +126,44 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
           <Field label="이메일">
             <div className="relative">
               <Mail className="absolute left-3 top-2.5 text-slate-400" size={18} />
-              <TextInput className="pl-10" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <TextInput
+                className="pl-10"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
             </div>
           </Field>
           <Field label="비밀번호">
             <div className="relative">
               <LockKeyhole className="absolute left-3 top-2.5 text-slate-400" size={18} />
-              <TextInput className="pl-10" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+              <TextInput
+                className="pl-10"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
             </div>
           </Field>
+          <label className="flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-slate-600">
+            <input
+              type="checkbox"
+              checked={rememberId}
+              onChange={(event) => toggleRememberId(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 accent-navy-900"
+            />
+            아이디 저장
+          </label>
           {error ? <p className="rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? "로그인 중..." : `${account.label} 페이지로 이동`}
           </Button>
         </form>
 
-        <div className="mt-5 rounded-md bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-          데모 계정: 관리자 <span className="font-semibold text-slate-700">admin@shinsegaeawards.kr</span> / 심사위원{" "}
-          <span className="font-semibold text-slate-700">hong@jury.kr</span>, 비밀번호는 둘 다 <span className="font-semibold text-slate-700">password</span>
-        </div>
       </Card>
     </main>
   );

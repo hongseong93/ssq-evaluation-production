@@ -72,7 +72,7 @@ export function JudgeEvaluation() {
     const stored = window.localStorage.getItem("review-system-user");
     const user = stored ? JSON.parse(stored) : null;
     if (!user || user.role !== "judge") {
-      router.replace("/judge/login");
+      router.replace("/login");
       return;
     }
 
@@ -274,7 +274,7 @@ export function JudgeEvaluation() {
 
   function logout() {
     window.localStorage.removeItem("review-system-user");
-    router.push("/judge/login");
+    router.replace("/login");
   }
 
   if (loading) return <div className="grid min-h-screen place-items-center bg-slate-100 text-sm font-semibold text-slate-600">심사 데이터를 불러오는 중입니다.</div>;
