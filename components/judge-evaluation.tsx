@@ -173,8 +173,7 @@ export function JudgeEvaluation() {
   const nextDivisionSubmission = nextDivision ? submissions.find((submission) => submission.division === nextDivision) : undefined;
   const nextTarget = nextSubmissionInDivision ?? nextDivisionSubmission;
   const nextTargetIndex = nextTarget ? submissions.findIndex((submission) => submission.id === nextTarget.id) : -1;
-  const previousSubmissionInDivision = currentDivisionSubmissions[currentDivisionIndex - 1];
-  const previousTargetIndex = previousSubmissionInDivision ? submissions.findIndex((submission) => submission.id === previousSubmissionInDivision.id) : -1;
+  const previousTargetIndex = submissionIndex > 0 ? submissionIndex - 1 : -1;
 
   useEffect(() => {
     if (draftTimer.current) clearTimeout(draftTimer.current);
