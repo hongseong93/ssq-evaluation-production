@@ -96,9 +96,8 @@ export function RoleLogin({ initialRole = "admin" }: RoleLoginProps) {
         </div>
 
         <div className="mt-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">Review System</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold">Evaluation System</p>
           <h1 className="mt-2 text-3xl font-bold text-navy-900">신세계스퀘어 미디어아트 어워즈</h1>
-          <p className="mt-2 text-sm text-slate-600">하나의 서버와 DB에서 로그인 권한에 따라 페이지를 분기합니다.</p>
         </div>
 
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
